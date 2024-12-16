@@ -26,22 +26,13 @@ pip install timm==1.0.8 openai==1.40.3 lmdeploy[all]==0.5.3
 pip install datasets==2.19.2
 ```
 
-## 1.2 InternStudio环境获取模型
+## 1.2 获取模型
 
 为方便文件管理，我们需要一个存放模型的目录，本教程统一放置在`/root/models/`目录。
 
-运行以下命令，创建文件夹并设置开发机共享目录的软链接。
 
-```Plain
-mkdir /root/models
-ln -s /root/share/new_models/Shanghai_AI_Laboratory/internlm2_5-7b-chat /root/models
-ln -s /root/share/new_models/Shanghai_AI_Laboratory/internlm2_5-1_8b-chat /root/models
-ln -s /root/share/new_models/OpenGVLab/InternVL2-26B /root/models
-```
 
-此时，我们可以看到`/root/models`中会出现`internlm2_5-7b-chat`、`internlm2_5-1_8b-chat`和`InternVL2-26B`文件夹。
-
-教程使用internlm2_5-7b-chat和InternVL2-26B作为演示。由于上述模型量化会消耗大量时间(约8h)，**量化作业请使用internlm2_5-1_8b-chat模型**完成。
+教程使用internlm2_5-7b-chat作为演示。由于上述模型量化会消耗大量时间(约8h)，**可以使用internlm2_5-1_8b-chat模型**完成。
 
 ## <a id="1.3">1.3 LMDeploy验证启动模型文件</a>
 
@@ -350,23 +341,6 @@ cd /root/models/
 du -sh *
 ```
 
-输出结果如下。(其余文件夹都是以软链接的形式存在的，不占用空间，故显示为0)
-
-![img](https://raw.githubusercontent.com/BigWhiteFox/pictures/main/24.png)
-
-那么原模型大小呢？输入以下指令查看。
-
-```Python
-cd /root/share/new_models/Shanghai_AI_Laboratory/
-du -sh *
-```
-
-终端输出结果如下。
-
-![img](https://raw.githubusercontent.com/BigWhiteFox/pictures/main/25.png)
-
-一经对比即可发觉，15G对4.9G，优势在我。
-
 那么显存占用情况对比呢？输入以下指令启动量化后的模型。
 
 ```Python
@@ -434,101 +408,12 @@ lmdeploy serve api_server \
 
 想要更极限且保证正常工作的量化设置的话，各位小伙伴可以之后自行探索，本次实践教学便止步于此了。
 
-# 3 LMDeploy与InternVL2
 
-本次实践选用InternVL2-26B进行演示，其实就根本来说作为一款VLM和上述的InternLM2.5在操作上并无本质区别，仅是多出了"图片输入"这一额外步骤，但作为量化部署进阶实践，选用InternVL2-26B目的是带领大家体验一下LMDeploy的量化部署可以做到何种程度。
+# 3 LMDeploy之FastAPI与Function call
 
-## 3.1 LMDeploy Lite
+之前在[2.1.1 启动API服务器](#2.1.1)与[2.1.3 以Gradio**网页形式连接API服务器**](#3.2)均是借助FastAPI封装一个API出来让LMDeploy自行进行访问，在这一章节中我们将依托于LMDeploy封装出来的API进行更加灵活更具DIY的开发。
 
-InternVL2-26B需要约70+GB显存，但是为了让我们能够在***30%A100***上运行，需要先进行量化操作，这也是量化本身的意义所在——即降低模型部署成本。
-
-### 3.1.1 W4A16 模型量化和部署
-
-针对InternVL系列模型，让我们先进入conda环境，并输入以下指令，执行模型的量化工作。(本步骤耗时较长，请耐心等待)
-
-```Plain
-conda activate lmdeploy
-lmdeploy lite auto_awq \
-   /root/models/InternVL2-26B \
-  --calib-dataset 'ptb' \
-  --calib-samples 128 \
-  --calib-seqlen 2048 \
-  --w-bits 4 \
-  --w-group-size 128 \
-  --batch-size 1 \
-  --search-scale False \
-  --work-dir /root/models/InternVL2-26B-w4a16-4bit
-```
-
-等终端输出如下时，说明正在推理中，稍待片刻。
-
-![img](https://raw.githubusercontent.com/BigWhiteFox/pictures/main/31.png)
-
-等待推理完成，便可以在左侧/models内直接看到对应的模型文件。
-
-### 3.1.2 W4A16 量化+ KV cache+KV cache 量化
-
-输入以下指令，让我们启用量化后的模型。
-
-```Python
-lmdeploy serve api_server \
-    /root/models/InternVL2-26B-w4a16-4bit \
-    --model-format awq \
-    --quant-policy 4 \
-    --cache-max-entry-count 0.1\
-    --server-name 0.0.0.0 \
-    --server-port 23333 \
-    --tp 1
-```
-
-启动后观测显存占用情况，此时只需要约23.8GB的显存，已经是一张***30%A100***即可部署的模型了。
-
-![img](https://raw.githubusercontent.com/BigWhiteFox/pictures/main/32.png)
-
-![img](https://raw.githubusercontent.com/BigWhiteFox/pictures/main/33.png)
-
-根据[InternVL2](https://internvl.github.io/blog/2024-07-02-InternVL-2.0/)介绍，InternVL2 26B是由一个6B的ViT、一个100M的MLP以及一个19.86B的internlm组成的。
-
-<details>   <summary>点击显示/隐藏显存占用情况的计算细节</summary>      让我们来计算一下使用A100 80GB直接启动模型的显存占用情况：<br>   1、在 fp16 精度下，6BViT模型权重占用12GB：60×10^9 parameters×2 Bytes/parameter=12GB<br>   2、在 fp16 精度下，19.86B≈20B的internlm模型权重占用40GB：200×10^9 parameters×2 Bytes/parameter=40GB<br>   3、kv cache占用22.4GB：剩余显存80-12-40=28GB，kv cache默认占用80%，即28*0.8=22.4GB<br>   4、其他项<br>   是故总占用=Vit权重占用12GB+internlm模型权重占用40GB+kv cache占用22.4GB+其他项≥74.4GB<br>      对于使用30%A100*1(24GB显存容量)联合部署的显存情况(23.8GB)：<br>   1、在 fp16 精度下，6BViT模型权重占用12GB：60×10^9 parameters×2 Bytes/parameter=12GB (ViT使用精度为fp16的pytorch推理，量化只对internlm起效果)<br>   2、在 int4 精度下，19.86B≈20B的internlm模型权重占用10GB：200×10^9 parameters×0.5 Bytes/parameter=10GB<br>   3、kv cache占用0.2GB：剩余显存24-12-10=2GB，kv cache修改为占用10%，即2*0.1=0.2GB<br>   4、其他项1.6GB<br>   是故23.8GB=Vit权重占用12GB+internlm模型权重占用10GB+kv cache占用0.2GB+其他项1.6GB </details>
-
-如果此时推理图片，则会显示剩余显存不足，这是因为推理图片的时候pytorch会占用额外的激活显存，故有需要的小伙伴可以开启50%A100进行图片推理。
-
-## <a id="3.2">3.2 LMDeploy API部署InternVL2</a>
-
-具体封装操作与之前大同小异，仅仅在数个指令细节上作调整，故本章节大部分操作与[2.1 LMDeploy API部署InternLM2.5](#2.1)中几近完全一样，同学们可自行"依葫芦画瓢"，以下教程仅做参考。
-
-通过以下命令启动API服务器，部署InternVL2模型：
-
-```Python
-lmdeploy serve api_server \
-    /root/models/InternVL2-26B-w4a16-4bit/ \
-    --model-format awq \
-    --quant-policy 4 \
-    --cache-max-entry-count 0.1 \
-    --server-name 0.0.0.0 \
-    --server-port 23333 \
-    --tp 1
-```
-
-其余步骤与[2.1.1 启动API服务器](#2.1.1)剩余内容一致。
-
-命令行形式、Gradio网页形式连接操作与
-
-[2.1.2 以命令行形式连接API服务器](#2.1.2) 
-
-[2.1.3 以Gradio网页形式连接API服务器](#2.1.3)
-
-步骤流程、指令完全一致，不再赘述。
-
-以下为Gradio网页形式连接成功后对话截图。
-
-![img](https://raw.githubusercontent.com/BigWhiteFox/pictures/main/34.png)
-
-# 4 LMDeploy之FastAPI与Function call
-
-之前在[2.1.1 启动API服务器](#2.1.1)与[3.2 LMDeploy API部署InternVL2](#3.2)均是借助FastAPI封装一个API出来让LMDeploy自行进行访问，在这一章节中我们将依托于LMDeploy封装出来的API进行更加灵活更具DIY的开发。
-
-## 4.1 API开发
+## 3.1 API开发
 
 与之前一样，让我们进入创建好的conda环境并输入指令启动API服务器。
 
@@ -544,7 +429,7 @@ lmdeploy serve api_server \
     --tp 1
 ```
 
-**完成作业时请使用以下命令：**
+**可以使用1.8b尝试**
 
 ```
 conda activate lmdeploy

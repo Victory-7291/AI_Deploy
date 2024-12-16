@@ -31,7 +31,7 @@ pip install datasets==2.19.2
 
 教程使用internlm2_5-7b-chat作为演示。由于上述模型量化会消耗大量时间(约8h)，**可以使用internlm2_5-1_8b-chat模型**完成。
 
-请从huggingface下载模型[internlm2_5-1_8b-chat](https://huggingface.co/internlm/internlm2_5-1_8b-chat) [internlm2_5-7b-chat](https://huggingface.co/internlm/internlm2_5-7b-chat)
+请从huggingface下载模型[internlm2_5-1_8b-chat](https://huggingface.co/internlm/internlm2_5-1_8b-chat)   [internlm2_5-7b-chat](https://huggingface.co/internlm/internlm2_5-7b-chat)
 
 ## <a id="1.3">1.3 LMDeploy验证启动模型文件</a>
 
